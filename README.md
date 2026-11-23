@@ -166,7 +166,7 @@ When the signals agree, the combined score moves toward their shared conclusion.
 When they disagree, the average produces a middle score. That outcome is
 explicitly uncertain rather than letting either signal win on its own.
 
-**The numbers:** Model signal weight: `0.5`. Style signal weight: `0.5`.
+**The numbers:** Model signal weight: `0.35`. Style signal weight: `0.65`.
 Human threshold: `0.35`. AI threshold: `0.65`. These numbers live in
 `config.py`.
 
@@ -382,6 +382,16 @@ of AI authorship.
 | 4. appeal path | 5 of 5 under review with an appeal entry | 5/5 | 5/5 | 5/5 | PASS |
 | 5. bad input | 4 malformed cases return 400 | 4/4 | 4/4 | 4/4 | PASS |
 
+**After the 35% model / 65% style improvement**
+
+| Criterion | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|
+| 1. my own writing | 0 AI | 0 AI | 0 AI | PASS |
+| 2. label coverage | only unsure | only unsure | only unsure | MISS |
+| 3. score spread | gap -0.108 | gap -0.108 | gap -0.108 | MISS |
+| 4. appeal path | 5/5 | 5/5 | 5/5 | PASS |
+| 5. bad input | 4/4 | 4/4 | 4/4 | PASS |
+
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
@@ -470,22 +480,48 @@ that produced it:
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** I changed the combining weights from 50% model and 50%
+style to 35% model and 65% style. This was one measured change, not a threshold
+change or a rewrite of every signal.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** The worst criterion and false-positive
+pattern showed that the model signal was too influential in formal, careful,
+rubric-style human writing. Reducing model weight gave the shape signal more
+control over combined uncertainty and moved one high-risk own-writing and
+attack case toward unsure.
 
 ### Attack Run — After
 
 <!-- Same format. `run_attacks.py --label after` -->
 
+The full 56-row table is in
+`results/attack_run_2026-11-22_2143_after.md`.
 
+| Family | Before | After |
+|---|---:|---:|
+| evasion | 9 HELD, 1 BROKE | 9 HELD, 1 BROKE |
+| false_positive | 2 HELD, 6 BROKE | 3 HELD, 5 BROKE |
+| malformed / bad request | 10 HELD, 10 BROKE | 10 HELD, 10 BROKE |
+| prompt_injection | 6 HELD, 0 BROKE | 6 HELD, 0 BROKE |
+| flood_same_creator | 12 HELD, 0 BROKE | 12 HELD, 0 BROKE |
 
-**Did it help, and how do I know:**
+**Did it help, and how do I know:** It helped false positives: FP04 changed
+from AI to unsure, and five of the own-writing scenarios changed from AI or
+human in the first run to all unsure after the weight change. Criterion 1
+improved from one AI result per trial to zero AI results per trial.
+
+It did not help evasion EV10, malformed-input handling, or criteria 2 and 3.
+EV10 remained AI, and the human-vs-AI score gap remained in the wrong direction
+in all three runs: -0.1328 before and -0.10796 after. The model weight change
+did not solve style normalization or malformed-text validation.
 
 <!-- Widening the unsure band usually fixes one problem and creates another.
      Reporting that trade honestly is worth full credit. -->
 
-
+I would favor fewer false accusations, even though it means more AI text
+would remain unsure or human. Real writers pay the highest cost for a wrong
+AI label, so the service should spend more doubt on uncertain cases and use
+high-confidence AI only when both signals agree strongly.
 
 ---
 
@@ -494,7 +530,17 @@ that produced it:
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
+The style signal still does not separate the project's clearly human and AI
+examples in the intended direction, so criteria 2 and 3 remain missed. EV10 and
+several false-positive inputs also remain too close to AI. Control characters,
+punctuation-only text, emoji, long words, and right-to-left text still receive
+decisions because validation does not ensure meaningful text before signal
+calls. Missing and non-string creator IDs are also not rejected consistently.
 
+I stopped after one improvement because the milestone allowed one measured
+change and required an evidence-based comparison. A complete fix would require
+separate style-normalization work and stronger route validation, not more
+threshold tuning on top of this result.
 
 **The trade I'd make if this ran for real:**
 
