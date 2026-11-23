@@ -322,20 +322,51 @@ can look like one. -->
 <!-- Every attack with its outcome and a held-or-broke mark.
      `run_attacks.py --label before` produces the table. -->
 
+The full 56-row table is in
+`results/attack_run_2026-11-22_2008_before.md`.
 
+| Family | Attacks | HELD | BROKE / concerning |
+|---|---:|---:|---:|
+| evasion | 10 | 9 | 1 |
+| false_positive | 8 | 2 | 6 |
+| prompt_injection | 6 | 6 | 0 |
+| malformed / bad request | 20 | 10 | 10 |
+| flood_same_creator | 12 | 12 | 0 |
+
+- EV10 returned `ai` and is marked BROKE for the repeated-stanza evasion.
+- FP02-FP07 are genuine human writing but received `ai`; all are marked
+  BROKE from a false-positive perspective.
+- MF03-MF07 and RQ02/RQ06 allowed malformed inputs to receive a 200 decision;
+  the malformed/bad-request cases are marked BROKE where 400 was expected.
+- MF01, MF02, MF08, RQ01, RQ03-RQ05, RQ07-RQ12 correctly returned 400.
+- FL01_11 and FL01_12 received 429 after ten 200 responses.
 
 **Ten audit log entries from the run**
 
 <!-- Choose entries that show the interesting failures, not the ten easiest. -->
 
 ```json
-
+{"creator_id":"attacker_FP02","content_id":"eaedbcfa-14af-414e-8f43-f66185a6a552","guess":"ai","model_score":0.7387,"style_score":0.6149,"combined_score":0.6768,"label":"We think this was probably written with AI assistance.","status":"decided"}
+{"creator_id":"attacker_FP03","content_id":"1cc5c1ef-474e-4eaa-a5d6-b7541d581d89","guess":"ai","model_score":0.8051,"style_score":0.5885,"combined_score":0.6968,"label":"We think this was probably written with AI assistance.","status":"decided"}
+{"creator_id":"attacker_FP04","content_id":"691fd3e0-f018-41ad-b89e-c6f7aa0b7f36","guess":"ai","model_score":0.8329,"style_score":0.5406,"combined_score":0.6867,"label":"We think this was probably written with AI assistance.","status":"decided"}
+{"creator_id":"attacker_EV10","content_id":"34499245-9cfd-431a-ba07-d93b79a7ecd7","guess":"ai","model_score":0.9792,"style_score":0.7116,"combined_score":0.8454,"label":"We think this was probably written with AI assistance.","status":"decided"}
+{"creator_id":"attacker_MF03","content_id":"47c86bc6-18e2-49be-81ef-e453fa7b5a59","guess":"human","model_score":0.0,"style_score":0.4,"combined_score":0.2,"label":"We think this was probably written by a person.","status":"decided"}
+{"creator_id":"attacker_MF07","content_id":"27e8aa0f-a790-419f-978b-24990ed2da60","guess":"ai","model_score":0.9064,"style_score":1.0,"combined_score":0.9532,"label":"We think this was probably written with AI assistance.","status":"decided"}
+{"creator_id":"attacker_RQ02","content_id":"969ba66f-9767-47da-a021-9e09326c6a40","guess":"unsure","model_score":0.2395,"style_score":0.65,"combined_score":0.4447,"label":"We cannot tell reliably whether this was written by a person or AI.","status":"decided"}
+{"creator_id":"attacker_MF01","event":"rejected","reason":"invalid_text","detail":"text must be a non-empty string.","status":"rejected"}
+{"creator_id":"attacker_MF02","event":"rejected","reason":"text_too_short","detail":"Text is too short to score — a few sentences at least.","status":"rejected"}
+{"creator_id":"attacker_MF08","event":"rejected","reason":"text_too_long","detail":"text exceeds 10000 characters.","text_length":57640,"status":"rejected"}
 ```
 
 **The single worst outcome** — the one I'd least want to explain to a writer
 whose work got caught by it:
 
-
+FP02-FP07 were genuinely human pieces that received `ai` or `unsure` in ways
+that could wrongly accuse a writer. The worst pattern was FP03: non-native
+English writing that was carefully written received a 0.6968 combined score,
+with a 0.8051 model score and 0.5885 style score. The model signal dominated
+the result even though predictability and careful vocabulary are poor evidence
+of AI authorship.
 
 ---
 
