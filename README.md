@@ -532,24 +532,45 @@ high-confidence AI only when both signals agree strongly.
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
-The style signal still does not separate the project's clearly human and AI
-examples in the intended direction, so criteria 2 and 3 remain missed. EV10 and
-several false-positive inputs also remain too close to AI. Control characters,
-punctuation-only text, emoji, long words, and right-to-left text still receive
-decisions because validation does not ensure meaningful text before signal
-calls. Missing and non-string creator IDs are also not rejected consistently.
-
-I stopped after one improvement because the milestone allowed one measured
-change and required an evidence-based comparison. A complete fix would require
-separate style-normalization work and stronger route validation, not more
-threshold tuning on top of this result.
+- **Criterion 2 — label coverage:** All three examples still returned
+  `unsure` in all three trials. I would add calibrated high-AI and
+  high-human examples and lower/raise the label thresholds only after
+  checking that each result was reachable. I stopped after the required one
+  improvement because adjusting thresholds without a measured score reversal
+  would only hide the weak score spread.
+- **Criterion 3 — score spread:** The human-like average remained 0.53224 and
+  the AI-like average remained 0.42428 after the weight change, for a
+  -0.10796 gap. I would redesign the style features or recalibrate the model
+  score so clearly human text receives lower combined scores. I stopped because
+  the milestone limited me to one improvement and that change did not repair
+  the underlying style-direction problem.
+- **EV10 — repeated stanza structure:** It still returned `ai` with a combined
+  score of 0.805. I would replace repeated-stanza structure with a normalized
+  measure that distinguishes regular prose from intentional repetition. I
+  stopped because changing another signal would exceed the one-improvement
+  scope for this milestone.
+- **FP02, FP03, FP05, FP06, and FP07 — false positives:** These genuine human
+  texts remained labeled `ai` after the weight change. I would widen the unsure
+  band and retrain or recalibrate the style signal against formal human writing.
+  I stopped after the one allowed improvement because widening thresholds alone
+  can fix misses in the report while pushing other human writing into
+  uncertainty or AI labels.
+- **MF03-MF07 and RQ02/RQ06 — malformed inputs:** Control characters,
+  punctuation-only text, a long word, emoji, right-to-left text, missing
+  creator IDs, and object creator IDs still reached the signal or label stage.
+  I would validate text for meaningful words and control characters, and require
+  a non-empty string for `creator_id`. I stopped at the evidence stage because
+  I used the milestone's one improvement on signal weights instead of expanding
+  route validation in the same run.
 
 **The trade I'd make if this ran for real:**
 
 <!-- Two sentences. Fewer wrong accusations means more AI text getting through.
      Say which way you'd go and WHO PAYS FOR IT. -->
 
-
+I would prefer fewer false accusations, even if more AI-generated text received
+an unsure or human label. Real writers pay for a wrong accusation with their
+trust and reputation, while staff can review uncertain cases separately.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
