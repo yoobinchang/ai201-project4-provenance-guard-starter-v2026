@@ -376,17 +376,26 @@ of AI authorship.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. my own writing | No more than 1 of 10 labeled AI | 1 AI | 1 AI | 1 AI | PASS |
+| 2. label coverage | All three labels reachable | only unsure | only unsure | only unsure | MISS |
+| 3. score spread | Human below AI by at least 0.20 | gap -0.13 | gap -0.13 | gap -0.13 | MISS |
+| 4. appeal path | 5 of 5 under review with an appeal entry | 5/5 | 5/5 | 5/5 | PASS |
+| 5. bad input | 4 malformed cases return 400 | 4/4 | 4/4 | 4/4 | PASS |
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
 ```json
-
+{
+  "source": "scoring.py::combine_signals",
+  "scenario": "label coverage",
+  "trial": 1,
+  "results": [
+    {"guess": "unsure", "confidence": 0.5366, "model_score": 0.5534, "style_score": 0.5198},
+    {"guess": "unsure", "confidence": 0.5342, "model_score": 0.5783, "style_score": 0.49},
+    {"guess": "unsure", "confidence": 0.5393, "model_score": 0.5719, "style_score": 0.5068}
+  ]
+}
 ```
 
 **Diagnoses**
@@ -405,7 +414,16 @@ that produced it:
 
      Look for a pattern. Five failures on one signal is one problem, not five. -->
 
+Criterion 2 missed because all three label-coverage inputs landed in the
+0.5342-0.5393 unsure range. The route and label mapping worked, but the
+weighted average and the chosen thresholds did not produce human or AI labels
+for these examples.
 
+Criterion 3 missed because the human-like scenario averaged 0.52152 and the
+AI-like scenario averaged 0.38872 across all three trials. The score spread was
+therefore -0.1328 in the wrong direction. This points first to the style signal
+and combining rule: the chosen style normalization gave the 5 AI-like examples
+lower scores than the 5 human-like examples.
 
 ---
 
