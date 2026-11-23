@@ -261,15 +261,26 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I first thought through the submission flow, signals,
+  thresholds, and expected behavior myself. I then asked AI to follow the
+  project walkthrough and turn those requirements into repository changes.
+- *What came back:* AI produced candidate documentation and implementation
+  structures, including the submission trace, endpoint shapes, signal scoring,
+  labels, and acceptance criteria.
+- *What I changed:* I reviewed each change and kept the parts that matched my
+  own design decisions, while requesting English comments and corrections where
+  the project instructions or code needed adjustment.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked AI to continue the walkthrough for the remaining
+  milestones, including the endpoint implementation, second signal, combined
+  score, labels, and appeal path.
+- *What came back:* AI generated code drafts for `submit`, `appeal`, the
+  stylometry measures, signal combination, label mapping, and audit-log updates.
+- *What I changed:* I verified the behavior with smoke tests and reviewed the
+  response fields and validation logic. I kept the final implementation only
+  after checking that it followed the starter's contracts.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
