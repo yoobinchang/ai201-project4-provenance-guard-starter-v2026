@@ -414,16 +414,57 @@ that produced it:
 
      Look for a pattern. Five failures on one signal is one problem, not five. -->
 
-Criterion 2 missed because all three label-coverage inputs landed in the
-0.5342-0.5393 unsure range. The route and label mapping worked, but the
-weighted average and the chosen thresholds did not produce human or AI labels
-for these examples.
+### Criterion diagnoses
 
-Criterion 3 missed because the human-like scenario averaged 0.52152 and the
-AI-like scenario averaged 0.38872 across all three trials. The score spread was
-therefore -0.1328 in the wrong direction. This points first to the style signal
-and combining rule: the chosen style normalization gave the 5 AI-like examples
-lower scores than the 5 human-like examples.
+- **Criterion 1 — MET.** In each trial, one of the 10 own-writing pieces was
+  labeled AI, so the result met the target of at most one false positive.
+- **Criterion 2 — MISSED.** All three label-coverage submissions landed in the
+  unsure band: 0.5366, 0.5342, and 0.5393 in trial 1, and the same pattern
+  occurred in the other two trials. The stage was signal combination and label
+  mapping: the inputs did not cover enough of the combined-score range, and
+  the 0.35/0.65 thresholds left this test batch without a human or AI result.
+- **Criterion 3 — MISSED.** The 5 human-like pieces averaged 0.52152 while the
+  5 AI-like pieces averaged 0.38872 across all three trials. This is a
+  -0.1328 average gap in the wrong direction. The stage is the style signal:
+  its normalization and AI-direction calculations assign higher scores to the
+  human-like batch and lower scores to the AI-like batch, so the same weighting
+  does not recover a meaningful separation.
+- **Criterion 4 — MET.** All five valid submissions were appealed successfully.
+  Each appeal returned `under_review`, and the append-only log received exactly
+  one appeal entry beside the original decision.
+- **Criterion 5 — MET.** Empty text, missing text, null text, and text over
+  10,000 characters returned 400 in all three trials. The route rejected the
+  input before model inference, and the rejection was logged.
+
+### Attack diagnoses
+
+- **EV10 — BROKE.** The repeated-stanza text targeted the style signal and
+  returned AI with a combined score of 0.8454. The mechanism is the style
+  signal's spread/punctuation normalization: the repeated structure reduced
+  its human-like variation reading, and the high model score increased the
+  combined result.
+- **FP02-FP07 — BROKE.** Six genuine human texts were labeled AI or were
+  pushed above the human threshold. The signal-one model finds predictable
+  formal, careful, rubric-style, and repeated text easy to predict, while the
+  style signal also rewards regular shape as AI-like. This is a
+  false-positive mechanism at stages 1 and 2, before the combining rule
+  amplifies the agreement.
+- **MF03 — BROKE.** Control characters reached the model and returned human
+  instead of being rejected. The route validation only checked text length,
+  not control-character content, so malformed bytes reached the signal stage.
+- **MF04 — BROKE.** A punctuation-only submission received a 200 decision.
+  It has no meaningful words, but the style signal produced a shape score that
+  was combined into a decision instead of being rejected by the route.
+- **MF05-MF07 — BROKE.** A very long word, emoji-only text, and right-to-left
+  text received AI or high-AI decisions. Their shapes or lack of normal English
+  words do not belong in the model/style assumptions, so they reached the
+  combining rule as ordinary text and were overconfidently labeled.
+- **RQ02 and RQ06 — BROKE.** Missing or non-string creator IDs fell back to
+  `unknown` or were accepted rather than rejected. The route accepted malformed
+  metadata instead of validating the creator field as a non-empty string.
+- **FL01_11-FL01_12 — HELD.** The flood reached 429 after ten 200 responses,
+  so the per-creator limiter stopped the same-caller burst. The mechanism was
+  the Flask-Limiter decorator, and the rejection entries appeared in the log.
 
 ---
 
