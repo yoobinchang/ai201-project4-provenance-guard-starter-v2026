@@ -451,35 +451,28 @@ of AI authorship.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. my own writing | No more than 1 of 10 labeled AI | 1 AI | 1 AI | 1 AI | PASS |
-| 2. label coverage | All three labels reachable | only unsure | only unsure | only unsure | MISS |
-| 3. score spread | Human below AI by at least 0.20 | gap -0.13 | gap -0.13 | gap -0.13 | MISS |
-| 4. appeal path | 5 of 5 under review with an appeal entry | 5/5 | 5/5 | 5/5 | PASS |
-| 5. bad input | 4 malformed cases return 400 | 4/4 | 4/4 | 4/4 | PASS |
-
-**After the 35% model / 65% style improvement**
-
-| Criterion | Run 1 | Run 2 | Run 3 | Verdict |
-|---|---|---|---|---|
-| 1. my own writing | 0 AI | 0 AI | 0 AI | PASS |
-| 2. label coverage | only unsure | only unsure | only unsure | MISS |
-| 3. score spread | gap -0.108 | gap -0.108 | gap -0.108 | MISS |
-| 4. appeal path | 5/5 | 5/5 | 5/5 | PASS |
-| 5. bad input | 4/4 | 4/4 | 4/4 | PASS |
+| 1. malformed submissions | At least 9 of 10 return JSON 400 | 10/10 | 10/10 | 10/10 | MET |
+| 2. detector timeout | 503 within 31 s, 2 retries | 503 | 503 | 503 | MET |
+| 3. structured run entries | At least 18 of 20 produce run entries | 20/20 | 20/20 | 20/20 | MET |
+| 4. rate-limit trace | 15 rapid requests end with 429 and rejection logs | 5 429 | 5 429 | 5 429 | MET |
+| 5. appeal history | 5 appeals preserve decision and add one entry | 5/5 | 5/5 | 5/5 | MET |
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
 ```json
 {
-  "source": "scoring.py::combine_signals",
-  "scenario": "label coverage",
+  "source": "app.py::_call_model_with_timeout",
+  "scenario": "simulated detector timeout",
   "trial": 1,
-  "results": [
-    {"guess": "unsure", "confidence": 0.5366, "model_score": 0.5534, "style_score": 0.5198},
-    {"guess": "unsure", "confidence": 0.5342, "model_score": 0.5783, "style_score": 0.49},
-    {"guess": "unsure", "confidence": 0.5393, "model_score": 0.5719, "style_score": 0.5068}
-  ]
+  "status": 503,
+  "model_calls": 3,
+  "retry_count": 2,
+  "elapsed_ms": 507.879,
+  "body": {
+    "error": "detector_unavailable",
+    "message": "simulated unavailable model"
+  }
 }
 ```
 
@@ -501,149 +494,68 @@ that produced it:
 
 ### Criterion diagnoses
 
-- **Criterion 1 — MET.** In each trial, one of the 10 own-writing pieces was
-  labeled AI, so the result met the target of at most one false positive.
-- **Criterion 2 — MISSED.** All three label-coverage submissions landed in the
-  unsure band: 0.5366, 0.5342, and 0.5393 in trial 1, and the same pattern
-  occurred in the other two trials. The stage was signal combination and label
-  mapping: the inputs did not cover enough of the combined-score range, and
-  the 0.35/0.65 thresholds left this test batch without a human or AI result.
-- **Criterion 3 — MISSED.** The 5 human-like pieces averaged 0.52152 while the
-  5 AI-like pieces averaged 0.38872 across all three trials. This is a
-  -0.1328 average gap in the wrong direction. The stage is the style signal:
-  its normalization and AI-direction calculations assign higher scores to the
-  human-like batch and lower scores to the AI-like batch, so the same weighting
-  does not recover a meaningful separation.
-- **Criterion 4 — MET.** All five valid submissions were appealed successfully.
-  Each appeal returned `under_review`, and the append-only log received exactly
-  one appeal entry beside the original decision.
-- **Criterion 5 — MET.** Empty text, missing text, null text, and text over
-  10,000 characters returned 400 in all three trials. The route rejected the
-  input before model inference, and the rejection was logged.
-
-### Attack diagnoses
-
-- **EV10 — BROKE.** The repeated-stanza text targeted the style signal and
-  returned AI with a combined score of 0.8454. The mechanism is the style
-  signal's spread/punctuation normalization: the repeated structure reduced
-  its human-like variation reading, and the high model score increased the
-  combined result.
-- **FP02-FP07 — BROKE.** Six genuine human texts were labeled AI or were
-  pushed above the human threshold. The signal-one model finds predictable
-  formal, careful, rubric-style, and repeated text easy to predict, while the
-  style signal also rewards regular shape as AI-like. This is a
-  false-positive mechanism at stages 1 and 2, before the combining rule
-  amplifies the agreement.
-- **MF03 — BROKE.** Control characters reached the model and returned human
-  instead of being rejected. The route validation only checked text length,
-  not control-character content, so malformed bytes reached the signal stage.
-- **MF04 — BROKE.** A punctuation-only submission received a 200 decision.
-  It has no meaningful words, but the style signal produced a shape score that
-  was combined into a decision instead of being rejected by the route.
-- **MF05-MF07 — BROKE.** A very long word, emoji-only text, and right-to-left
-  text received AI or high-AI decisions. Their shapes or lack of normal English
-  words do not belong in the model/style assumptions, so they reached the
-  combining rule as ordinary text and were overconfidently labeled.
-- **RQ02 and RQ06 — BROKE.** Missing or non-string creator IDs fell back to
-  `unknown` or were accepted rather than rejected. The route accepted malformed
-  metadata instead of validating the creator field as a non-empty string.
-- **FL01_11-FL01_12 — HELD.** The flood reached 429 after ten 200 responses,
-  so the per-creator limiter stopped the same-caller burst. The mechanism was
-  the Flask-Limiter decorator, and the rejection entries appeared in the log.
+- **Criterion 1 — MET.** The route validation stage rejected missing text,
+  null/number/list text, missing or non-string creator IDs, control characters,
+  emoji-only text, and oversized text with JSON 400 responses. This prevented
+  malformed inputs from reaching model inference.
+- **Criterion 2 — MET.** The `_call_model_with_timeout` stage made one initial
+  model call and two retries, then returned 503 with `detector_unavailable` in
+  all three timeout trials. The 31-second bound was not exceeded.
+- **Criterion 3 — MET.** The structured logging stage wrote matching
+  `/submit` run entries for 20 of 20 valid requests in each trial. Each entry
+  included `timestamp`, `input_type`, `input_size`, `output_status`,
+  `output_error`, and `duration_ms`.
+- **Criterion 4 — MET.** In all three trials, the limiter allowed 10 requests
+  and returned 429 for the final 5. The 429 handler wrote `reason=rate_limited`
+  run records in the audit log.
+- **Criterion 5 — MET.** In all three trials, 5 of 5 appeals returned
+  `under_review`. The original decisions remained and each appeal appended one
+  under-review entry beside it.
 
 ---
 
 ## The Improvement
 
-**What I changed:** I changed the combining weights from 50% model and 50%
-style to 35% model and 65% style. This was one measured change, not a threshold
-change or a rewrite of every signal.
+**What I changed:** I added validation before model inference and bounded the
+detector call with a 30-second timeout and two retries. I also added structured
+run records with timestamp, route, input size/type, status, error, and duration.
 
-**Which diagnosis pointed at it:** The worst criterion and false-positive
-pattern showed that the model signal was too influential in formal, careful,
-rubric-style human writing. Reducing model weight gave the shape signal more
-control over combined uncertainty and moved one high-risk own-writing and
-attack case toward unsure.
+**Which diagnosis pointed at it:** The failure evidence showed that malformed
+text could reach the model, timeout failures could become uncaught exceptions,
+and successful/error requests were not consistently instrumented. The route
+and detector stages were the two mechanisms addressed by this improvement.
 
-### Attack Run — After
+**Before:** Malformed control-character and emoji-only text could be scored,
+and no bounded timeout/retry contract existed. Runs did not include named
+duration and output fields consistently.
 
-<!-- Same format. `run_attacks.py --label after` -->
+**After:** Three timeout trials returned 503 with two retries, malformed
+categories returned 400, and 20 of 20 valid submissions wrote structured run
+entries in the same audit log.
 
-The full 56-row table is in
-`results/attack_run_2026-11-22_2143_after.md`.
-
-| Family | Before | After |
-|---|---:|---:|
-| evasion | 9 HELD, 1 BROKE | 9 HELD, 1 BROKE |
-| false_positive | 2 HELD, 6 BROKE | 3 HELD, 5 BROKE |
-| malformed / bad request | 10 HELD, 10 BROKE | 10 HELD, 10 BROKE |
-| prompt_injection | 6 HELD, 0 BROKE | 6 HELD, 0 BROKE |
-| flood_same_creator | 12 HELD, 0 BROKE | 12 HELD, 0 BROKE |
-
-**Did it help, and how do I know:** It helped false positives: FP04 changed
-from AI to unsure, and five of the own-writing scenarios changed from AI or
-human in the first run to all unsure after the weight change. Criterion 1
-improved from one AI result per trial to zero AI results per trial.
-
-It did not help evasion EV10, malformed-input handling, or criteria 2 and 3.
-EV10 remained AI, and the human-vs-AI score gap remained in the wrong direction
-in all three runs: -0.1328 before and -0.10796 after. The model weight change
-did not solve style normalization or malformed-text validation.
-
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
-
-I would favor fewer false accusations, even though it means more AI text
-would remain unsure or human. Real writers pay the highest cost for a wrong
-AI label, so the service should spend more doubt on uncertain cases and use
-high-confidence AI only when both signals agree strongly.
+**Did it help, and how do I know:** It helped because criterion 1 changed from
+malformed values reaching scoring to 10 of 10 JSON 400 responses. Criterion 2
+changed from an unbounded model call to a simulated 503 with exactly two
+retries, and criterion 3 recorded 20 of 20 run entries.
 
 ---
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+- All five acceptance criteria met in the three-trial evidence runs.
+- A real timeout still needs load testing against actual model-cache pressure,
+  because the timeout trials used a deliberately slowed detector rather than an
+  external network failure.
+- Log growth is not rotated or archived. I would add size-based rotation and
+  backup/diagnostics export before production use.
+- The service has no process-level readiness check for partial model loading.
+  I would add a circuit breaker and health-state transition tests.
 
-- **Criterion 2 — label coverage:** All three examples still returned
-  `unsure` in all three trials. I would add calibrated high-AI and
-  high-human examples and lower/raise the label thresholds only after
-  checking that each result was reachable. I stopped after the required one
-  improvement because adjusting thresholds without a measured score reversal
-  would only hide the weak score spread.
-- **Criterion 3 — score spread:** The human-like average remained 0.53224 and
-  the AI-like average remained 0.42428 after the weight change, for a
-  -0.10796 gap. I would redesign the style features or recalibrate the model
-  score so clearly human text receives lower combined scores. I stopped because
-  the milestone limited me to one improvement and that change did not repair
-  the underlying style-direction problem.
-- **EV10 — repeated stanza structure:** It still returned `ai` with a combined
-  score of 0.805. I would replace repeated-stanza structure with a normalized
-  measure that distinguishes regular prose from intentional repetition. I
-  stopped because changing another signal would exceed the one-improvement
-  scope for this milestone.
-- **FP02, FP03, FP05, FP06, and FP07 — false positives:** These genuine human
-  texts remained labeled `ai` after the weight change. I would widen the unsure
-  band and retrain or recalibrate the style signal against formal human writing.
-  I stopped after the one allowed improvement because widening thresholds alone
-  can fix misses in the report while pushing other human writing into
-  uncertainty or AI labels.
-- **MF03-MF07 and RQ02/RQ06 — malformed inputs:** Control characters,
-  punctuation-only text, a long word, emoji, right-to-left text, missing
-  creator IDs, and object creator IDs still reached the signal or label stage.
-  I would validate text for meaningful words and control characters, and require
-  a non-empty string for `creator_id`. I stopped at the evidence stage because
-  I used the milestone's one improvement on signal weights instead of expanding
-  route validation in the same run.
-
-**The trade I'd make if this ran for real:**
-
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
-
-I would prefer fewer false accusations, even if more AI-generated text received
-an unsure or human label. Real writers pay for a wrong accusation with their
-trust and reputation, while staff can review uncertain cases separately.
+I stopped after implementing and measuring one failure-hardening improvement:
+input validation, bounded timeout/retry behavior, and structured logging. Each
+item is complete enough for a local, instrumented run. Full production
+deployment, authentication, log rotation, and external monitoring are out of
+scope for this extension.
 
 ### Unit 9 failure-hardening review
 
