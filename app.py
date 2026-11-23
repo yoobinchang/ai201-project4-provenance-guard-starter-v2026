@@ -31,6 +31,8 @@ from flask import Flask, jsonify, request
 import audit
 import config
 import detector
+import scoring
+import stylometry
 
 app = Flask(__name__)
 
@@ -266,10 +268,11 @@ def submit():
             "message": str(exc),
         }), 503
 
+    style_score = stylometry.style_signal(text)
+    combined_score = scoring.combine_signals(model_score, style_score)
     guess = "unsure"
-    confidence = 0.0
+    confidence = combined_score
     label = "PLACEHOLDER - Full scoring is coming in Milestone 5."
-    style_score = 0.0
 
     audit.log_decision(
         content_id=content_id,
@@ -277,7 +280,7 @@ def submit():
         guess=guess,
         model_score=model_score,
         style_score=style_score,
-        combined_score=None,
+        combined_score=combined_score,
         label=label,
         status="decided",
     )
@@ -289,6 +292,7 @@ def submit():
         "label": label,
         "model_score": model_score,
         "style_score": style_score,
+        "combined_score": combined_score,
     })
 
 

@@ -150,6 +150,12 @@ wrote it. Typos, sentence breaks, quotations, edits, or even formality changes
 can move the score without changing authorship. It is therefore easy to evade
 with superficial edits and should not be treated as proof.
 
+The style signal uses coefficient of variation for sentence length, exact
+unique-word ratio for vocabulary variation, and meaningful punctuation per
+character. Lower sentence variation and lower vocabulary variation increase
+the AI-like score. The three normalized components have weights of 40%, 35%, and
+25%, respectively.
+
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two

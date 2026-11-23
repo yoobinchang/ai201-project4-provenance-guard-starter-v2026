@@ -64,8 +64,15 @@ def sentence_length_spread(text: str) -> float:
     `stdev` raises on fewer than two values. Decide what that should return
     before the attack set decides for you.
     """
-    # TODO: replace this
-    return 0.0
+    lengths = [len(words(sentence)) for sentence in sentences(text)]
+    if len(lengths) < 2:
+        return 0.0
+
+    mean = statistics.mean(lengths)
+    if mean == 0:
+        return 0.0
+
+    return statistics.stdev(lengths) / mean
 
 
 def type_token_ratio(text: str) -> float:
@@ -80,8 +87,11 @@ def type_token_ratio(text: str) -> float:
     directly comparable on it, and if your test inputs vary a lot in length,
     that alone can look like a signal.
     """
-    # TODO: replace this
-    return 0.0
+    text_words = words(text)
+    if not text_words:
+        return 0.0
+
+    return len(set(text_words)) / len(text_words)
 
 
 def punctuation_density(text: str) -> float:
@@ -94,8 +104,11 @@ def punctuation_density(text: str) -> float:
         more interesting than full stops, because they vary more between
         writers.
     """
-    # TODO: replace this
-    return 0.0
+    if not text:
+        return 0.0
+
+    meaningful = re.findall(r"[,;:!?()\[\]{}—–\-]", text)
+    return len(meaningful) / len(text)
 
 
 # ── Combining them ───────────────────────────────────────────────────────────
@@ -122,8 +135,24 @@ def style_signal(text: str) -> float:
     you trust it. Plain and ordinary, not formal: formal prose reads as *human*
     to signal one, and it is plain writing that gets accused.
     """
-    # TODO: replace this
-    return 0.5
+    spread = sentence_length_spread(text)
+    vocabulary = type_token_ratio(text)
+    punctuation = punctuation_density(text)
+
+    # Lower sentence-length variation and lower vocabulary variation are
+    # more even, which is more consistent with generated prose.
+    ai_spread = 1.0 / (1.0 + spread / 0.50)
+    ai_vocabulary = 1.0 - min(max(vocabulary, 0.0), 1.0)
+
+    # Punctuation density is normalized by a conservative 8% reference.
+    punctuation_ai = 1.0 - min(punctuation / 0.08, 1.0)
+
+    score = (
+        0.40 * ai_spread
+        + 0.35 * ai_vocabulary
+        + 0.25 * punctuation_ai
+    )
+    return round(min(max(score, 0.0), 1.0), 4)
 
 
 if __name__ == "__main__":
