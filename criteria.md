@@ -46,9 +46,14 @@ Two things worth knowing before you pick numbers:
 
 <!-- Your criterion. It must name a number. -->
 
+Out of 10 pieces of my own writing, no more than 1 may be labeled
+`high-confidence AI`.
 
 
-**Why this target:**
+**Why this target:** A wrong accusation against a real writer is more costly
+than missing some AI-generated text. Limiting false positives to at most 1 in
+10 leaves room for the detector to detect AI work while protecting the writer
+on the receiving end.
 
 
 
@@ -58,9 +63,13 @@ Two things worth knowing before you pick numbers:
 
 <!-- Your criterion. -->
 
+Across 3 submissions representing clearly human, clearly AI, and borderline
+text, all 3 label variants must be reachable in at least 1 of 3 trials.
 
 
-**Why this target:**
+**Why this target:** A label system is not useful if one of its outcomes can
+never occur. This target verifies that human, unsure, and AI cases are not
+collapsed by unreachable thresholds or a missing signal.
 
 
 
@@ -70,9 +79,14 @@ Two things worth knowing before you pick numbers:
 
 <!-- Your criterion. -->
 
+For 5 clearly human pieces and 5 clearly AI-generated pieces, the 10 combined
+scores must separate by at least 0.20 on average, with the human scores lower
+than the AI scores in all 3 trials.
 
 
-**Why this target:**
+**Why this target:** A score should communicate more than a label. A meaningful
+gap makes borderline cases easier to explain and gives future threshold changes
+a measurable effect.
 
 
 
@@ -82,9 +96,13 @@ Two things worth knowing before you pick numbers:
 
 <!-- Your criterion. -->
 
+Every one of 5 valid submissions must produce an appeal path that changes the
+item to `under_review` and adds exactly 1 appeal entry to the audit log.
 
 
-**Why this target:**
+**Why this target:** A writer must be able to challenge a decision. The appeal
+feature would be unreliable if it changed status without recording the appeal
+or recorded it for an unknown content ID.
 
 
 
@@ -94,9 +112,14 @@ Two things worth knowing before you pick numbers:
 
 <!-- Your criterion. -->
 
+Missing `text`, empty `text`, `text: null`, and a submission larger than
+10,000 characters must each return a JSON 400 response without crashing the
+service.
 
 
-**Why this target:**
+**Why this target:** Malformed or oversized input should not become an
+unhandled server failure. A bounded, explainable 400 response preserves the
+service and leaves enough trace to diagnose abusive or accidental requests.
 
 
 
