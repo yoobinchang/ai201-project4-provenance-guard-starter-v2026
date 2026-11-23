@@ -91,6 +91,12 @@ local service. Their wall-clock durations were 12.767 s, 3.272 s, 1.978 s,
 this out with a Python wall-clock timer around the HTTP request and divided
 the five durations by five. The cost is local compute time, not API spend.
 
+**Scaling the cost:** At 100 submissions, the measured average implies
+`100 x 4.398 = 439.8 seconds`, or approximately **7 minutes 20 seconds** of
+local compute time. This is a projection, not a measured 100-run result.
+It assumes comparable warmed runs and does not include model download time,
+which happened separately and was not included in the five-run average.
+
 **Before/after criterion verdict**
 
 | Criterion | Before | After | Verdict |
@@ -556,6 +562,12 @@ input validation, bounded timeout/retry behavior, and structured logging. Each
 item is complete enough for a local, instrumented run. Full production
 deployment, authentication, log rotation, and external monitoring are out of
 scope for this extension.
+
+**The next unit I would build:** I would add size-based rotation and a
+diagnostics export for `logs/audit.jsonl`, because the local run record grows
+linearly and a larger workload could make retrieval slow or consume disk
+space. This is the one next piece I would build first; it would preserve the
+append-only log while making it safe to archive and inspect after rotation.
 
 ### Unit 9 failure-hardening review
 
