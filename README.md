@@ -576,33 +576,20 @@ scope for this extension.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
-     SUBMISSION CHECKLIST — unit 7
+     SUBMISSION CHECKLIST — unit 9
 
-       [ ] criteria.md has five numbered criteria, each naming a target
-       [ ] Each has a reason underneath
-       [ ] POST /submit returns content_id, guess, confidence, label,
-           model_score and style_score
-       [ ] Two signals that measure DIFFERENT things, each with a named blind spot
-       [ ] Three label variants, all reachable, written out in full
-       [ ] POST /appeal changes status and writes to the log
-       [ ] Signals and Scoring names scoring.py::combine_signals
-       [ ] Sample Run: a submission AND an appeal, as pasted text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN
-
-     SUBMISSION CHECKLIST — unit 8
-
-       [ ] Rate limiting on /submit, with your numbers justified
-       [ ] The pasted run of status codes showing 429
-       [ ] Audit log with all nine fields, recording rejections too
-       [ ] The attack set run IN FULL, every input with an outcome
-       [ ] Ten audit log entries pasted as text
-       [ ] Five criteria across three trials
-       [ ] A diagnosis for every miss and every broken attack — stage AND mechanism
-       [ ] One improvement, with Attack Run — After
-       [ ] What's Still Broken, including the production trade
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
+       [x] One system extended: Provenance Guard
+       [x] Shape B named and out-of-scope items documented
+       [x] Path B local run path documented in RUNNING.md
+       [x] Five acceptance criteria written before results
+       [x] Three trials completed for every criterion
+       [x] Before and after evidence recorded
+       [x] At least ten structured run entries pasted as text
+       [x] One cost number measured from local runs
+       [x] One improvement implemented and measured
+       [x] Every criterion verdict and diagnosis completed
+       [x] What's Still Broken and stopping reason written
+       [x] Repository URL unchanged from the previous unit
 
      Do not delete and recreate this repository.
      ═════════════════════════════════════════════════════════════════════ -->
