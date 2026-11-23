@@ -112,6 +112,32 @@ def log_rejection(creator_id: str, reason: str, **extra) -> dict:
     })
 
 
+def log_run(
+    *,
+    route: str,
+    creator_id: str,
+    input_type: str,
+    input_size: int,
+    output_status: int,
+    output_error: str | None = None,
+    duration_ms: float,
+    **extra,
+) -> dict:
+    """Record one request as a structured run with timing and outcome."""
+    return _append({
+        "timestamp": _now(),
+        "event": "run",
+        "route": route,
+        "creator_id": creator_id,
+        "input_type": input_type,
+        "input_size": input_size,
+        "output_status": output_status,
+        "output_error": output_error,
+        "duration_ms": round(duration_ms, 3),
+        **extra,
+    })
+
+
 def _append(entry: dict) -> dict:
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False)

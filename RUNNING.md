@@ -191,6 +191,26 @@ Unit 9 asks you to deploy one of your systems. **Read this before you pick
 which one** — for this project the answer is already decided, and it isn't the
 hosted one.
 
+**Local run path for failure hardening**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python detector.py
+python app.py
+```
+
+The exact run command is `python app.py`. In a second terminal, verify the
+service and run the local evidence commands:
+
+```bash
+curl http://127.0.0.1:5000/health
+python run_eval.py --trials 3 --label before
+python run_eval.py --trials 3 --label after
+curl "http://127.0.0.1:5000/log?limit=20"
+```
+
 Flask's built-in server says "development server" on startup because that's
 what it is. A real one comes from `gunicorn`, which is in
 `requirements.txt` and unused until now:

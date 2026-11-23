@@ -34,6 +34,22 @@
 
 <!-- ═══════════════════════ UNIT 7 — THE BUILD ═══════════════════════ -->
 
+## Unit 9 Extension
+
+**Shape:** B — Harden against failure
+
+This extension adds a bounded failure-handling layer to Provenance Guard. It
+validates request fields and text before model inference, rejects malformed
+inputs without a 500 response, bounds model calls with timeout and retry
+settings, records structured run timing for each request, and preserves existing
+rate-limit rejection logging.
+
+**What is out of scope:** This unit does not deploy the service, add hosted
+authentication, replace the local GPT-2 model, or change the scoring labels.
+The run path is **Path B — local with logs** because loading GPT-2 and PyTorch
+requires more memory than a typical free host. All failure and cost evidence is
+recorded on the local machine.
+
 ## What This Does
 
 <!-- The path a submission takes, from arriving to the label a reader sees.
@@ -57,6 +73,59 @@
 8. The writer can challenge the result with `POST /appeal` and a `content_id`.
    The service verifies that the ID exists, appends an appeal to the audit log,
    and changes that item to `under_review`. It does not re-run the detector.
+9. The hardened submission path validates `creator_id`, text length, meaningful
+   words, and control characters before calling GPT-2.
+10. `detector.model_signal` is wrapped by a bounded timeout and retry count.
+    A timeout or unavailable model returns a JSON 503 instead of an unhandled
+    500.
+11. Every submit, appeal, and rejected request writes a structured `run` entry
+    containing timestamp, route, input size/type, status, error, and duration.
+
+**Run path:** Local with logs (`python app.py`). A hosted URL is not used
+because the local GPT-2 model plus PyTorch exceeds a typical 512 MB free-host
+limit. The exact environment and commands are in [RUNNING.md](/Users/yoobin/ai201-project4-provenance-guard-starter-v2026/RUNNING.md).
+
+**Cost measurement:** I measured five warmed submissions against the running
+local service. Their wall-clock durations were 12.767 s, 3.272 s, 1.978 s,
+2.694 s, and 1.278 s, for an average of **4.398 seconds per run**. I worked
+this out with a Python wall-clock timer around the HTTP request and divided
+the five durations by five. The cost is local compute time, not API spend.
+
+**Before/after criterion verdict**
+
+| Criterion | Before | After | Verdict |
+|---|---|---|---|
+| 1. Malformed submissions return 400 | Several malformed inputs reached model/scoring stages | 10 of 10 malformed categories returned 400 | MET |
+| 2. Model timeout and retry | No bounded timeout/retry contract | 3 of 3 simulated timeouts returned 503 within the bound | MET |
+| 3. Structured run logging | No named run records for all requests | 20 of 20 valid samples had run entries | MET |
+| 4. Rate-limit trace | 10 200 then 5 429, with rejection entries | Same 10/5 pattern in every relevant run | MET |
+| 5. Appeal history | Original decision was preserved | 5 of 5 appeals kept the decision and added one under-review entry | MET |
+
+**The improvement**
+
+The measured improvement was validation before model inference: reject missing
+or non-string `creator_id`, control characters, emoji-only or under-worded text,
+oversized text, and malformed JSON before the detector is called. This failed
+in the before state for malformed text such as control characters and emoji,
+which could receive a 200 label. After the change, the bad-input run returned
+400 for every malformed category tested.
+
+**Structured run log extract**
+
+```json
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_15","input_type":"text","input_size":58,"output_status":200,"output_error":null,"duration_ms":51.837}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_16","input_type":"text","input_size":54,"output_status":200,"output_error":null,"duration_ms":45.945}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_17","input_type":"text","input_size":56,"output_status":200,"output_error":null,"duration_ms":186.857}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_18","input_type":"text","input_size":63,"output_status":200,"output_error":null,"duration_ms":113.986}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_19","input_type":"text","input_size":57,"output_status":200,"output_error":null,"duration_ms":48.315}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"eval_structured r_20","input_type":"text","input_size":70,"output_status":200,"output_error":null,"duration_ms":70.020}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"bad","input_type":"text","input_size":18,"output_status":400,"output_error":"invalid_text_content","duration_ms":0.103}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"bad","input_type":"text","input_size":3,"output_status":400,"output_error":"invalid_text_content","duration_ms":0.262}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"bad","input_type":"text","input_size":12500,"output_status":400,"output_error":"text_too_long","duration_ms":0.800}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"test","input_type":"text","input_size":45,"output_status":503,"output_error":"detector_unavailable","duration_ms":507.879}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/submit","creator_id":"flood_tester","input_type":"json","input_size":0,"output_status":429,"output_error":"rate_limited","duration_ms":0.0}
+{"timestamp":"2026-11-23T03:43:38+00:00","event":"run","route":"/appeal","creator_id":"normal_cost_test","input_type":"json","input_size":56,"output_status":200,"output_error":null,"duration_ms":1.200}
+```
 
 ### Submission endpoint shape
 
@@ -571,6 +640,23 @@ high-confidence AI only when both signals agree strongly.
 I would prefer fewer false accusations, even if more AI-generated text received
 an unsure or human label. Real writers pay for a wrong accusation with their
 trust and reputation, while staff can review uncertain cases separately.
+
+### Unit 9 failure-hardening review
+
+- **Model timeout:** The bounded timeout and two retries were verified with
+  simulated delays, but real network or disk failures may behave differently.
+  I would add process-level health checks and a circuit breaker for repeated
+  detector failures. I stopped because local GPT-2 has no hosted-network retry
+  dependency and the required timeout simulation was sufficient.
+- **Retry cost:** Retrying may multiply local compute time when the model is
+  merely slow instead of unavailable. I would expose retry attempt count and
+  total model duration in the response only after load testing. I stopped
+  before that implementation because the milestone asks for evidence, not every
+  operational dashboard.
+- **Log persistence:** The local JSONL log survives process restarts but has no
+  rotation or external backup. I would add size-based rotation and a
+  diagnostics export. I stopped because Path B is intentionally local and
+  persistent storage is outside the extension scope.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 

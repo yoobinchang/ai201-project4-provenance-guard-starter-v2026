@@ -46,6 +46,16 @@ DETECTOR_MODEL = os.getenv("AI201_DETECTOR_MODEL", "gpt2")
 # 300 words, which is enough for the signal to mean something.
 DETECTOR_MAX_TOKENS = 400
 
+# ─── Failure handling (Unit 9, Shape B) ───────────────────────────────────
+# A model call gets a bounded wait and a small number of retries. These limits
+# keep malformed or unavailable model state from tying up a request forever.
+DETECTOR_TIMEOUT_SECONDS = 30.0
+DETECTOR_RETRY_COUNT = 2
+DETECTOR_RETRY_DELAY_SECONDS = 0.25
+
+MIN_TEXT_WORDS = 3
+MAX_TEXT_CHARS = 10_000
+
 
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.

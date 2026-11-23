@@ -24,7 +24,11 @@ Routes:
     GET  /health      is the service up, and is the model loaded
 """
 
+import re
+import time
 import uuid
+import queue
+import threading
 
 from flask import Flask, jsonify, request
 
@@ -35,6 +39,49 @@ import scoring
 import stylometry
 
 app = Flask(__name__)
+
+
+def _call_model_with_timeout(text: str) -> float:
+    """Call the detector with a bounded wait and retry transient failures."""
+    last_error = None
+    for attempt in range(config.DETECTOR_RETRY_COUNT + 1):
+        result_queue = queue.Queue(maxsize=1)
+
+        def call_detector():
+            try:
+                result_queue.put(("ok", detector.model_signal(text)))
+            except Exception as exc:  # noqa: BLE001
+                result_queue.put(("error", exc))
+
+        worker = threading.Thread(target=call_detector, daemon=True)
+        worker.start()
+        try:
+            status, value = result_queue.get(
+                timeout=config.DETECTOR_TIMEOUT_SECONDS,
+            )
+        except queue.Empty:
+            last_error = TimeoutError(
+                f"model call timed out after {config.DETECTOR_TIMEOUT_SECONDS:.1f}s"
+            )
+        else:
+            if status == "ok":
+                if not isinstance(value, (int, float)):
+                    last_error = RuntimeError("model returned no numeric score")
+                elif not 0.0 <= float(value) <= 1.0:
+                    last_error = RuntimeError("model returned an out-of-range score")
+                else:
+                    return float(value)
+            else:
+                last_error = value
+
+        if attempt < config.DETECTOR_RETRY_COUNT:
+            time.sleep(config.DETECTOR_RETRY_DELAY_SECONDS)
+
+    if isinstance(last_error, detector.DetectorUnavailable):
+        raise last_error
+    raise detector.DetectorUnavailable(
+        f"Model signal unavailable after retries: {last_error}"
+    )
 
 
 # ── Rate limiting — UNIT 8 ────────────────────────────────────────────────────
@@ -111,6 +158,15 @@ if config.RATE_LIMITING_ENABLED:
             reason="rate_limited",
             limit=str(exc.description),
         )
+        audit.log_run(
+            route="/submit",
+            creator_id=payload.get("creator_id", "unknown"),
+            input_type="json",
+            input_size=0,
+            output_status=429,
+            output_error="rate_limited",
+            duration_ms=0.0,
+        )
         return jsonify({
             "error": "rate_limited",
             "message": "Too many submissions. Try again shortly.",
@@ -147,6 +203,9 @@ def health():
         "detector_model": config.DETECTOR_MODEL,
         "detector_loaded": loaded,
         "rate_limiting": config.RATE_LIMITING_ENABLED,
+        "detector_timeout_seconds": config.DETECTOR_TIMEOUT_SECONDS,
+        "detector_retry_count": config.DETECTOR_RETRY_COUNT,
+        "max_text_chars": config.MAX_TEXT_CHARS,
         "log_entries": len(audit.read_entries()),
     })
 
@@ -202,56 +261,141 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
+    started = time.perf_counter()
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         audit.log_rejection(
             creator_id="unknown",
             reason="invalid_json",
             detail="Request body must be a JSON object.",
+            duration_ms=(time.perf_counter() - started) * 1000,
         )
-        return jsonify({
+        response = jsonify({
             "error": "invalid_json",
             "message": "Request body must be a JSON object.",
-        }), 400
+        })
+        audit.log_run(
+            route="/submit",
+            creator_id="unknown",
+            input_type="invalid_json",
+            input_size=0,
+            output_status=400,
+            output_error="invalid_json",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        return response, 400
 
     text = payload.get("text")
     creator_id = payload.get("creator_id")
     if not isinstance(creator_id, str) or not creator_id.strip():
         creator_id = "unknown"
-    else:
-        creator_id = creator_id.strip()
+        audit.log_rejection(
+            creator_id=creator_id,
+            reason="invalid_creator_id",
+            detail="creator_id must be a non-empty string.",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="json",
+            input_size=len(text) if isinstance(text, str) else 0,
+            output_status=400,
+            output_error="invalid_creator_id",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        return jsonify({
+            "error": "invalid_creator_id",
+            "message": "creator_id must be a non-empty string.",
+        }), 400
+    creator_id = creator_id.strip()
 
     if not isinstance(text, str) or not text.strip():
         audit.log_rejection(
             creator_id=creator_id,
             reason="invalid_text",
             detail="text must be a non-empty string.",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="json",
+            input_size=0,
+            output_status=400,
+            output_error="invalid_text",
+            duration_ms=(time.perf_counter() - started) * 1000,
         )
         return jsonify({
             "error": "invalid_text",
             "message": "text must be a non-empty string.",
         }), 400
 
-    if len(text) > 10_000:
+    if len(text) > config.MAX_TEXT_CHARS:
         audit.log_rejection(
             creator_id=creator_id,
             reason="text_too_long",
-            detail="text exceeds 10000 characters.",
+            detail=f"text exceeds {config.MAX_TEXT_CHARS} characters.",
             text_length=len(text),
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="text",
+            input_size=len(text),
+            output_status=400,
+            output_error="text_too_long",
+            duration_ms=(time.perf_counter() - started) * 1000,
         )
         return jsonify({
             "error": "text_too_long",
-            "message": "text must not exceed 10000 characters.",
+            "message": f"text must not exceed {config.MAX_TEXT_CHARS} characters.",
+        }), 400
+
+    control_characters = any(ord(character) < 32 and character not in "\n\r\t" for character in text)
+    words = re.findall(r"[a-z0-9']+", text.lower())
+    if control_characters or len(words) < config.MIN_TEXT_WORDS:
+        reason = "invalid_text_content"
+        audit.log_rejection(
+            creator_id=creator_id,
+            reason=reason,
+            detail="text must contain meaningful words and no control characters.",
+            word_count=len(words),
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="text",
+            input_size=len(text),
+            output_status=400,
+            output_error=reason,
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        return jsonify({
+            "error": reason,
+            "message": "text must contain at least 3 meaningful words and no control characters.",
         }), 400
 
     content_id = str(uuid.uuid4())
     try:
-        model_score = detector.model_signal(text)
+        model_score = _call_model_with_timeout(text)
     except ValueError as exc:
         audit.log_rejection(
             creator_id=creator_id,
             reason="text_too_short",
             detail=str(exc),
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="text",
+            input_size=len(text),
+            output_status=400,
+            output_error="text_too_short",
+            duration_ms=(time.perf_counter() - started) * 1000,
         )
         return jsonify({
             "error": "text_too_short",
@@ -262,6 +406,17 @@ def submit():
             creator_id=creator_id,
             reason="detector_unavailable",
             detail=str(exc),
+            retry_count=config.DETECTOR_RETRY_COUNT,
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
+        audit.log_run(
+            route="/submit",
+            creator_id=creator_id,
+            input_type="text",
+            input_size=len(text),
+            output_status=503,
+            output_error="detector_unavailable",
+            duration_ms=(time.perf_counter() - started) * 1000,
         )
         return jsonify({
             "error": "detector_unavailable",
@@ -282,6 +437,18 @@ def submit():
         combined_score=combined_score,
         label=label,
         status="decided",
+        duration_ms=(time.perf_counter() - started) * 1000,
+    )
+    audit.log_run(
+        route="/submit",
+        creator_id=creator_id,
+        input_type="text",
+        input_size=len(text),
+        output_status=200,
+        output_error=None,
+        duration_ms=(time.perf_counter() - started) * 1000,
+        content_id=content_id,
+        guess=guess,
     )
 
     return jsonify({
@@ -315,8 +482,18 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
+    started = time.perf_counter()
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
+        audit.log_run(
+            route="/appeal",
+            creator_id="unknown",
+            input_type="invalid_json",
+            input_size=0,
+            output_status=400,
+            output_error="invalid_json",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
         return jsonify({
             "error": "invalid_json",
             "message": "Request body must be a JSON object.",
@@ -325,11 +502,29 @@ def appeal():
     content_id = payload.get("content_id")
     reasoning = payload.get("reasoning")
     if not isinstance(content_id, str) or not content_id.strip():
+        audit.log_run(
+            route="/appeal",
+            creator_id="unknown",
+            input_type="json",
+            input_size=len(str(payload)),
+            output_status=400,
+            output_error="invalid_content_id",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
         return jsonify({
             "error": "invalid_content_id",
             "message": "content_id must be a non-empty string.",
         }), 400
     if not isinstance(reasoning, str) or not reasoning.strip():
+        audit.log_run(
+            route="/appeal",
+            creator_id="unknown",
+            input_type="json",
+            input_size=len(str(payload)),
+            output_status=400,
+            output_error="invalid_reasoning",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
         return jsonify({
             "error": "invalid_reasoning",
             "message": "reasoning must be a non-empty string.",
@@ -338,6 +533,15 @@ def appeal():
     content_id = content_id.strip()
     entries = audit.entries_for(content_id)
     if not entries:
+        audit.log_run(
+            route="/appeal",
+            creator_id="unknown",
+            input_type="json",
+            input_size=len(str(payload)),
+            output_status=404,
+            output_error="content_not_found",
+            duration_ms=(time.perf_counter() - started) * 1000,
+        )
         return jsonify({
             "error": "content_not_found",
             "message": "No submission exists for this content_id.",
@@ -352,6 +556,16 @@ def appeal():
         content_id=content_id,
         creator_id=creator_id,
         reasoning=reasoning.strip(),
+    )
+    audit.log_run(
+        route="/appeal",
+        creator_id=creator_id,
+        input_type="json",
+        input_size=len(str(payload)),
+        output_status=200,
+        output_error=None,
+        duration_ms=(time.perf_counter() - started) * 1000,
+        content_id=content_id,
     )
 
     return jsonify({
