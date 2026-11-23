@@ -39,7 +39,75 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
+1. A writer sends `POST /submit` a JSON body containing `text` and `creator_id`.
+2. The route creates a new `content_id` and validates that the text is present
+   and usable.
+3. `detector.model_signal(text)` measures how predictable the text is to GPT-2.
+   Lower perplexity produces a score closer to 1.0 (more AI-like).
+4. `stylometry.style_signal(text)` measures sentence-length variation,
+   vocabulary repetition, and punctuation density. It maps those shape features
+   to the same 0.0–1.0 scale where higher is more AI-like.
+5. `scoring.combine_signals(model_score, style_score)` combines the two signals
+   into one combined score.
+6. `scoring.score_to_label(combined_score)` maps the score to `human`, `unsure`,
+   or `ai`, and produces plain-language text for the writer.
+7. `audit.log_decision(...)` saves the content ID, creator ID, both signal
+   scores, combined score, guess, label, and status. The route returns the
+   same information to the writer.
+8. The writer can challenge the result with `POST /appeal` and a `content_id`.
+   The service verifies that the ID exists, appends an appeal to the audit log,
+   and changes that item to `under_review`. It does not re-run the detector.
 
+### Submission endpoint shape
+
+**Request**
+
+```json
+{
+  "text": "The text to judge.",
+  "creator_id": "writer_123"
+}
+```
+
+**Response**
+
+```json
+{
+  "content_id": "a-generated-uuid",
+  "guess": "human | unsure | ai",
+  "confidence": 0.0,
+  "label": "A plain-language explanation.",
+  "model_score": 0.0,
+  "style_score": 0.0
+}
+```
+
+`combined_score` is also stored in the audit log. Invalid or unusable text
+returns a 400 JSON error and is recorded as a rejection when it is a submission
+attempt rather than a route parsing failure.
+
+### Appeal endpoint shape
+
+**Request**
+
+```json
+{
+  "content_id": "a-generated-uuid",
+  "reasoning": "This was written by me."
+}
+```
+
+**Success response**
+
+```json
+{
+  "ok": true,
+  "content_id": "a-generated-uuid",
+  "status": "under_review"
+}
+```
+
+An unknown `content_id` returns 404 without creating an appeal entry.
 
 ---
 
@@ -53,35 +121,61 @@
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** `detector.py::model_signal` measures text perplexity:
+how surprising GPT-2 finds the text. The perplexity is converted with a logistic
+function onto a 0.0–1.0 score where higher means more AI-like.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** AI-generated text often
+uses the likely patterns GPT-2 itself expects, so it can have lower perplexity.
+Human writing can be more varied, unusual, or structurally surprising.
 
-**What it can't see:**
+**What it can't see:** This signal confuses predictability with authorship.
+Plain, conventional, or highly repetitive human writing can be very predictable
+and may receive an AI-like score. Dense, unusual, or non-native-but-limited
+vocabulary can also have a high perplexity and look human.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** `stylometry.py::style_signal` measures shape without
+reading meaning: the variation in sentence lengths, the type-token ratio
+(unique words / total words), and punctuation density.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated prose may use
+even, mid-length sentences and repeat vocabulary patterns. Human prose is often
+less regular, with short sentences beside longer ones and more varied
+punctuation.
 
-**What it can't see:**
+**What it can't see:** The signal cannot understand what the text says or who
+wrote it. Typos, sentence breaks, quotations, edits, or even formality changes
+can move the score without changing authorship. It is therefore easy to evade
+with superficial edits and should not be treated as proof.
 
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** Start with a weighted average of the model and style scores.
+When the signals agree, the combined score moves toward their shared conclusion.
+When they disagree, the average produces a middle score. That outcome is
+explicitly uncertain rather than letting either signal win on its own.
 
-**The numbers:**
+**The numbers:** Model signal weight: `0.5`. Style signal weight: `0.5`.
+Human threshold: `0.35`. AI threshold: `0.65`. These numbers live in
+`config.py`.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**A case where my two signals split, and what my rule does with it:** Suppose
+a plainly written human paragraph has `model_score = 0.90` but
+`style_score = 0.10`. The model mistakes predictable prose for AI, while the
+style signal sees a varied human-like shape. The 0.5/0.5 rule produces
+`combined_score = 0.50`, which falls in the unsure band instead of calling the
+writer confidently human or AI. This does not prove authorship; it records
+disagreement and limits the consequence of a split verdict.
 
 
 
@@ -96,16 +190,18 @@
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 - 0.35 | We think this was probably written by a person. |
+| unsure | 0.35 - 0.65 | We cannot tell reliably whether this was written by a person or AI. |
+| high-confidence AI | 0.65 - 1.00 | We think this was probably written with AI assistance. |
 
 **Why I worded the "unsure" one this way:**
 <!-- It's the hardest of the three. It has to admit uncertainty without
      sounding like an accusation, because the person reading it may well have
      written every word themselves. -->
 
-
+The unsure label does not accuse the writer or assign intent. It says the
+service does not have enough evidence to decide. That keeps the label in terms
+of the service's uncertainty rather than the person's authorship.
 
 ---
 
