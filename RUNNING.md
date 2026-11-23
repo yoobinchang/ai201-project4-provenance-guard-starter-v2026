@@ -76,8 +76,8 @@ curl -X POST http://127.0.0.1:5000/submit \
   -d '{"text": "some writing", "creator_id": "me"}'
 ```
 
-It returns a `501` saying it isn't built yet. **That's the correct starting
-position.**
+It returns the combined verdict, both signal scores, and a new `content_id`.
+This is the main successful path for the failure-hardening extension.
 
 ---
 
@@ -88,8 +88,8 @@ position.**
 | `POST /ping` | **works** | The example. Don't edit it |
 | `GET /health` | **works** | Is the service up, is the model loaded |
 | `GET /log` | **works** | The audit log, as JSON |
-| `POST /submit` | **you build it** | Milestones 3, 4, 5 |
-| `POST /appeal` | **you build it** | Milestone 5 |
+| `POST /submit` | **works** | Hardened submission, timeout/retry, scoring, and run logging |
+| `POST /appeal` | **works** | Validates IDs and adds an under-review appeal entry |
 
 ---
 
@@ -194,6 +194,8 @@ hosted one.
 **Local run path for failure hardening**
 
 ```bash
+git clone https://github.com/yoobinchang/ai201-project4-provenance-guard-starter-v2026.git
+cd ai201-project4-provenance-guard-starter-v2026
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -201,8 +203,12 @@ python detector.py
 python app.py
 ```
 
-The exact run command is `python app.py`. In a second terminal, verify the
-service and run the local evidence commands:
+The exact run command is `python app.py`. This repository is tested with Python
+3.11 through 3.13. The pinned dependencies are in `requirements.txt`. GPT-2
+downloads approximately 550 MB to the Hugging Face cache, and PyTorch requires
+roughly 200-800 MB of memory depending on the build.
+
+In a second terminal, verify the service and run the local evidence commands:
 
 ```bash
 curl http://127.0.0.1:5000/health

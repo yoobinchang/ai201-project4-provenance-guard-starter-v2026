@@ -344,14 +344,18 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 - *What I asked for:* I asked AI to continue through Unit 8 with the
   walkthrough, including the rate limiter, attack-set run, criteria trials,
-  failure diagnoses, and one measured improvement.
+  failure diagnoses, one measured improvement, and Unit 9 failure hardening.
 - *What came back:* AI produced candidate implementations and run summaries,
   including a 35% model and 65% style weight change. It also drafted which
-  attacks and criteria were held, missed, or still broken.
+  attacks and criteria were held, missed, or still broken. For Unit 9, AI
+  drafted timeout/retry handling, validation, structured run logging, and the
+  local evidence documentation.
 - *What I changed:* I reviewed the actual before-and-after evidence, kept only
   the one-change improvement, and checked the response fields and audit-log
-  behavior. I did not treat every candidate diagnosis as final; I verified the
-  score changes and service responses before writing the conclusions.
+  behavior. I ran the bad-input and timeout simulations, measured five local
+  request durations, and used the resulting evidence in this write-up. I did
+  not treat every candidate diagnosis as final; I verified the score changes
+  and service responses before writing the conclusions.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
