@@ -273,14 +273,16 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 2**
 
-- *What I asked for:* I asked AI to continue the walkthrough for the remaining
-  milestones, including the endpoint implementation, second signal, combined
-  score, labels, and appeal path.
-- *What came back:* AI generated code drafts for `submit`, `appeal`, the
-  stylometry measures, signal combination, label mapping, and audit-log updates.
-- *What I changed:* I verified the behavior with smoke tests and reviewed the
-  response fields and validation logic. I kept the final implementation only
-  after checking that it followed the starter's contracts.
+- *What I asked for:* I asked AI to continue through Unit 8 with the
+  walkthrough, including the rate limiter, attack-set run, criteria trials,
+  failure diagnoses, and one measured improvement.
+- *What came back:* AI produced candidate implementations and run summaries,
+  including a 35% model and 65% style weight change. It also drafted which
+  attacks and criteria were held, missed, or still broken.
+- *What I changed:* I reviewed the actual before-and-after evidence, kept only
+  the one-change improvement, and checked the response fields and audit-log
+  behavior. I did not treat every candidate diagnosis as final; I verified the
+  score changes and service responses before writing the conclusions.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
